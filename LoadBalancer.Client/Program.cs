@@ -10,32 +10,34 @@ string url = "http://localhost:8000/";
 
 var httpClient = new HttpClient();
 
-var inputs = File.ReadAllLines(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "inputs.txt"));
+var inputs = File.ReadAllLines(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "inputs.txt")).Select((x, i) => (x, i)).ToArray();
 
-var stack = new Stack<long>();
+var stack = new Stack<(int, long)>();
 
-foreach (var input in inputs)
+foreach (var (x, i) in inputs)
 {
-    if (!long.TryParse(input, out var longInput))
+    if (!long.TryParse(x, out var longInput))
     {
         continue;
     }
 
-    stack.Push(longInput);
+    stack.Push((i, longInput));
 }
 
-var finished = new List<long>();
+var finished = new List<int>();
 
 while (finished.Count != inputs.Length)
 {
-    if (!stack.TryPop(out var input)){
+    if (!stack.TryPop(out var input))
+    {
         continue;
     }
 
     var stream = new MemoryStream();
     var workRequest = new WorkRequest()
     {
-        Iterations = input
+        Index = input.Item1,
+        Iterations = input.Item2
     };
     stream.Write(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(workRequest)));
     stream.Seek(0, SeekOrigin.Begin);
@@ -50,30 +52,43 @@ while (finished.Count != inputs.Length)
         Content = streamContent
     };
 
-    try
+    _ = Task.Run(async () =>
     {
-        _ = httpClient.SendAsync(request).ContinueWith(async r =>
+        try
         {
-            var response = r.Result;
+            var response = await httpClient.SendAsync(request);
+
             if (!response.IsSuccessStatusCode)
             {
                 stack.Push(input);
             }
             else
             {
-                finished.Add(input);
-
                 var content = await response.Content.ReadAsStringAsync();
 
                 var workResponse = JsonSerializer.Deserialize<WorkResponse>(content);
-                Console.WriteLine($"{workResponse.Index} - {workResponse.NewIterations}");
-            }
 
-            Console.WriteLine(response.StatusCode);
-        });
-    }
-    catch (HttpRequestException)
-    {
-        continue;
-    }
+                if (workResponse is null)
+                {
+                    stack.Push(input);
+                    return;
+                }
+
+                var index = workResponse.Index;
+
+                while (index != finished.Count)
+                {
+
+                }
+
+                Console.WriteLine($"{index} - {workResponse.NewIterations}");
+
+                finished.Add(input.Item1);
+            }
+        }
+        catch (HttpRequestException)
+        {
+            stack.Push(input);
+        }
+    });
 }
