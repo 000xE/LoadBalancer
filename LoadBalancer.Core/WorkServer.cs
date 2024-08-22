@@ -38,14 +38,28 @@ namespace LoadBalancer.Core
                     content = sr.ReadToEnd();
                 }
 
-                if (content.Length != length)
+                if (content.Length != length || request.ContentType != "application/json")
                 {
                     response.StatusCode = (int)HttpStatusCode.BadRequest;
                     response.Close();
                     continue;
                 }
 
-                var workRequest = JsonSerializer.Deserialize<WorkRequest>(content);
+                WorkRequest? workRequest = null;
+
+                try
+                {
+                    workRequest = JsonSerializer.Deserialize<WorkRequest>(content);
+                }
+                catch (JsonException) { }
+
+                if (workRequest is null)
+                {
+                    response.StatusCode = (int)HttpStatusCode.BadRequest;
+                    response.Close();
+                    continue;
+                }
+
                 var workResponse = DoWork(workRequest);
 
                 response.StatusCode = (int)HttpStatusCode.OK;
